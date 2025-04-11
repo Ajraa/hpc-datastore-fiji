@@ -7,6 +7,8 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
 import cz.it4i.fiji.datastore.service.DataStoreRequest;
 import cz.it4i.fiji.datastore.service.DataStoreService;
 import cz.it4i.fiji.rest.util.DatasetInfo;
@@ -34,6 +36,9 @@ public class AddVersionDataset implements Command {
 	@Parameter(type = ItemIO.OUTPUT)
 	public String universalReferenceHint = "Try the 'latest' keyword instead of a particular version in scripts...";
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public DataStoreService dataStoreService;
 
@@ -53,11 +58,17 @@ public class AddVersionDataset implements Command {
 			final int previouslyLastVer = di.versions.stream().reduce(Integer::max).get();
 
 			List<Integer> resolutions = di.resolutionLevels.get(0).resolutions;
-			DataStoreRequest request = new DataStoreRequest(url,datasetID,
-					resolutions.get(0), resolutions.get(1), resolutions.get(2),
-					"new","write",5000);
+			if (useGraphql) {
+				GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+				new RegisterService(client).startServer(datasetID, resolutions.get(0), resolutions.get(1), resolutions.get(2), "new", 5000, "write");
+			} else {
+				DataStoreRequest request = new DataStoreRequest(url,datasetID,
+						resolutions.get(0), resolutions.get(1), resolutions.get(2),
+						"new","write",5000);
 
-			dataStoreService.getActiveServingUrl(request);
+				dataStoreService.getActiveServingUrl(request);
+			}
+
 			//NB: if we got here, the new version must have been created
 
 			/*
@@ -72,7 +83,7 @@ public class AddVersionDataset implements Command {
 			*/
 			newlyAddedVersion = previouslyLastVer+1;
 		}
-		catch (IOException e) {
+		catch (Exception e) {
 			myLogger.error("Some connection problem:");
 			e.printStackTrace();
 		}

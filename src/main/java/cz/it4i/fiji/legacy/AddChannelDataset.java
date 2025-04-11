@@ -7,6 +7,8 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
 import org.scijava.command.Command;
 import org.scijava.log.LogLevel;
 import org.scijava.log.LogService;
@@ -28,6 +30,9 @@ public class AddChannelDataset implements Command {
 	@Parameter(label = "UUID of the dataset to be modified:", persistKey = "datasetdatasetid")
 	public String datasetID = "someDatasetUUID";
 
+	@Parameter(label = "Use GraphQL", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	//@Parameter(label = "Number of channels being added:", min = "1", stepSize = "1")
 	//public int noOfNewChannels = 1;
 
@@ -39,20 +44,28 @@ public class AddChannelDataset implements Command {
 	public void run() {
 		//logging facility
 		myLogger = mainLogger.subLogger("HPC ModifyDataset", LogLevel.INFO);
+		myLogger.info("Adding "+1+" channel(s) into "+datasetID+" at "+url);
 
 		try {
+			if (useGraphql) {
+				GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+				new RegisterService(client).addChannels(datasetID, "1");
+			}
+			else
+			{
+				final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/channels").openConnection();
+				connection.setRequestMethod("POST");
+				connection.setRequestProperty("Content-Type","text/plain");
+				connection.setDoOutput(false);
+				//connection.setDoOutput(true);
+				connection.connect();
+				//connection.getOutputStream().write(noOfNewChannels);
+				myLogger.info("Server responded: "+connection.getResponseMessage());
+			}
 			//myLogger.info("Adding "+noOfNewChannels+" channel(s) into "+datasetID+" at "+url);
-			myLogger.info("Adding "+1+" channel(s) into "+datasetID+" at "+url);
-			final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/channels").openConnection();
-			connection.setRequestMethod("POST");
-			connection.setRequestProperty("Content-Type","text/plain");
-			connection.setDoOutput(false);
-			//connection.setDoOutput(true);
-			connection.connect();
-			//connection.getOutputStream().write(noOfNewChannels);
-			myLogger.info("Server responded: "+connection.getResponseMessage());
+
 		}
-		catch (IOException e) {
+		catch (Exception e) {
 			myLogger.error("Some connection problem:");
 			e.printStackTrace();
 		}
