@@ -10,28 +10,29 @@ package cz.it4i.fiji.legacy.util;
 import bdv.BigDataViewer;
 import bdv.ij.util.ProgressWriterIJ;
 import bdv.viewer.ViewerOptions;
+import client.HPCDatastore;
+import client.base.GraphQLClient;
 import com.google.gson.stream.JsonReader;
+import models.DataReturn;
 import mpicbg.spim.data.SpimDataException;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
 public class GuiBdvBrowseDialog {
-	public void startBrowser(final String serverUrl)
+	public void startBrowser(final String baseUrl, final String serverUrl, String uuid, boolean useGraphql)
 	throws IOException
 	{
 		final ArrayList< String > nameList = new ArrayList<>();
-		getDatasetList( serverUrl, nameList );
+		getDatasetList(baseUrl, serverUrl, uuid, nameList, useGraphql);
 		createDatasetListUI( serverUrl, nameList.toArray() );
 	}
 
@@ -41,56 +42,76 @@ public class GuiBdvBrowseDialog {
 	private final Map< String, ImageIcon> imageMap = new HashMap<>();
 	private final Map< String, String > datasetUrlMap = new HashMap<>();
 
-	private boolean getDatasetList( final String remoteUrl, final ArrayList< String > nameList ) throws IOException
+	private boolean getDatasetList(final String baseUrl, final String remoteUrl, String uuid, final ArrayList< String > nameList, boolean useGraphQL) throws IOException
 	{
-		// Get JSON string from the server
-		final URL url = new URL( remoteUrl + "/json/" );
-
-		final InputStream is = url.openStream();
-		final JsonReader reader = new JsonReader( new InputStreamReader( is, "UTF-8" ) );
-
-		reader.beginObject();
-
-		while ( reader.hasNext() )
+		try
 		{
-			// skipping id
-			reader.nextName();
+			final InputStream is;
+			// Get JSON string from the server
+			if (useGraphQL) {
+				GraphQLClient client = GraphQLClient.getInstance(baseUrl + "/graphql");
+				HPCDatastore hpcDatastore = new HPCDatastore(client);
+				DataReturn dt = hpcDatastore.jsonListDatastoreLoader(uuid, remoteUrl);
+				if (dt.getReturnType() != DataReturn.ReturnType.JSON) throw new Exception("Expected JSON, got " + dt.getReturnType());
+				is = new ByteArrayInputStream(dt.getData().getBytes(StandardCharsets.UTF_8));
+			} else {
+				final URL url;
+				url = new URL( remoteUrl + "/json/" );
+				is = url.openStream();
+			}
+
+
+
+			final JsonReader reader = new JsonReader( new InputStreamReader( is, "UTF-8" ) );
 
 			reader.beginObject();
 
-			String id = null, description = null, thumbnailUrl = null, datasetUrl = null;
 			while ( reader.hasNext() )
 			{
-				final String name = reader.nextName();
-				if ( name.equals( "id" ) )
-					id = reader.nextString();
-				else if ( name.equals( "description" ) )
-					description = reader.nextString();
-				else if ( name.equals( "thumbnailUrl" ) )
-					thumbnailUrl = reader.nextString();
-				else if ( name.equals( "datasetUrl" ) )
-					datasetUrl = reader.nextString();
-				else
-					reader.skipValue();
-			}
+				// skipping id
+				reader.nextName();
 
-			if ( id != null )
-			{
-				nameList.add( id );
-				if ( thumbnailUrl != null && thumbnailUrl.length() > 0 )
-					imageMap.put( id, new ImageIcon( new URL( thumbnailUrl ) ) );
-				if ( datasetUrl != null )
-					datasetUrlMap.put( id, datasetUrl );
+				reader.beginObject();
+
+				String id = null, description = null, thumbnailUrl = null, datasetUrl = null;
+				while ( reader.hasNext() )
+				{
+					final String name = reader.nextName();
+					if ( name.equals( "id" ) )
+						id = reader.nextString();
+					else if ( name.equals( "description" ) )
+						description = reader.nextString();
+					else if ( name.equals( "thumbnailUrl" ) )
+						thumbnailUrl = reader.nextString();
+					else if ( name.equals( "datasetUrl" ) )
+						datasetUrl = reader.nextString();
+					else
+						reader.skipValue();
+				}
+
+				if ( id != null )
+				{
+					nameList.add( id );
+					if ( thumbnailUrl != null && thumbnailUrl.length() > 0 )
+						imageMap.put( id, new ImageIcon( new URL( thumbnailUrl ) ) );
+					if ( datasetUrl != null )
+						datasetUrlMap.put( id, datasetUrl );
+				}
+
+				reader.endObject();
 			}
 
 			reader.endObject();
+
+			reader.close();
+
+			return true;
 		}
-
-		reader.endObject();
-
-		reader.close();
-
-		return true;
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			return false;
+		}
 	}
 
 	private void createDatasetListUI( final String remoteUrl, final Object[] values )

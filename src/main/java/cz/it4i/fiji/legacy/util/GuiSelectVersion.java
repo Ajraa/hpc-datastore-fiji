@@ -7,6 +7,9 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy.util;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
+import client.base.GraphQLException;
 import cz.it4i.fiji.rest.util.DatasetInfo;
 import org.scijava.command.Command;
 import org.scijava.command.DynamicCommand;
@@ -33,6 +36,9 @@ public class GuiSelectVersion extends DynamicCommand {
 	@Parameter(label = "Choose from available versions:", choices = {}, initializer = "readVersions")
 	public String version;
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public LogService mainLogger;
 	protected Logger myLogger;
@@ -42,13 +48,16 @@ public class GuiSelectVersion extends DynamicCommand {
 		myLogger = mainLogger.subLogger("HPC DeleteDataset", LogLevel.INFO);
 
 		try {
-			final DatasetInfo di = DatasetInfo.createFrom(url, datasetID);
+			final DatasetInfo di = DatasetInfo.createFrom(url, datasetID, useGraphql);
 			final List<String> versions = di.versions.stream().map(Object::toString).collect(Collectors.toList());
 			getInfo().getMutableInput("version",String.class).setChoices(versions);
 		} catch (IOException e) {
 			myLogger.error("Some connection problem:");
 			e.printStackTrace();
 			this.cancel("Connection problem");
+		} catch (GraphQLException e) {
+			myLogger.error(e.toString());
+			e.printStackTrace();
 		}
 	}
 
@@ -56,11 +65,19 @@ public class GuiSelectVersion extends DynamicCommand {
 	public void run() {
 		try {
 			myLogger.info("Deleting version "+version+" from dataset "+datasetID+" at "+url);
-			final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/"+version+"/delete").openConnection();
-			connection.getInputStream(); //the communication happens only after this command
-			myLogger.info("Server responded: "+connection.getResponseMessage());
+			if (useGraphql) {
+				GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+				new RegisterService(client).deleteDatasetVersions(datasetID, version, null);
+			} else {
+				final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/"+version+"/delete").openConnection();
+				connection.getInputStream(); //the communication happens only after this command
+				myLogger.info("Server responded: "+connection.getResponseMessage());
+			}
 		} catch (IOException e) {
 			myLogger.error("Some connection problem:");
+			e.printStackTrace();
+		} catch (GraphQLException e) {
+			myLogger.error(e.toString());
 			e.printStackTrace();
 		}
 	}

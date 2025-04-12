@@ -7,17 +7,19 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.base.GraphQLClient;
+import client.base.GraphQLException;
+import models.DataReturn;
 import org.scijava.plugin.Plugin;
 import org.scijava.plugin.Parameter;
 import org.scijava.command.Command;
 import org.scijava.log.LogService;
 
+import java.io.*;
 import java.net.URL;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+import client.BigDataService;
 
 @Plugin(type = Command.class, headless = false, menuPath = "Plugins>HPC DataStore>BigDataViewer>Save XML (legacy BDS)")
 public class BdvSaveXmlWithLegacyBds implements Command {
@@ -35,30 +37,62 @@ public class BdvSaveXmlWithLegacyBds implements Command {
 	@Parameter(label = "Save as .xml:", style = "file,extensions:xml")
 	public File outputXml;
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public LogService logService;
 
 	@Override
 	public void run() {
-		String queryUrl = "http://"+url+"/bdv/"+datasetID+"/"+versionAsStr;
-		logService.info("Polling URL: "+queryUrl);
-		try (InputStream in = new URL(queryUrl).openStream();
-		     OutputStream out = new FileOutputStream(outputXml)) {
+		if (useGraphql) {
+			GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+            try {
+                DataReturn dt = new BigDataService(client).getCell(datasetID, versionAsStr, null);
+				if (dt.getReturnType() != DataReturn.ReturnType.XML) throw new Exception("Expected XML, got " + dt.getReturnType());
 
-			final byte[] buffer = new byte[8192];
-			int size = in.read(buffer);
-			while (size > 0) {
-				out.write(buffer, 0, size);
-				size = in.read(buffer);
+				try (InputStream in = new ByteArrayInputStream(dt.getData().getBytes(StandardCharsets.UTF_8));
+					 OutputStream out = new FileOutputStream(outputXml)) {
+
+					final byte[] buffer = new byte[8192];
+					int size = in.read(buffer);
+					while (size > 0) {
+						out.write(buffer, 0, size);
+						size = in.read(buffer);
+					}
+					out.flush();
+
+					logService.info("Written file: " + outputXml);
+				}
+            } catch (GraphQLException e) {
+				logService.error(e.toString());
+				e.printStackTrace();
+                throw new RuntimeException(e);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+		else {
+			String queryUrl = "http://"+url+"/bdv/"+datasetID+"/"+versionAsStr;
+			logService.info("Polling URL: "+queryUrl);
+			try (InputStream in = new URL(queryUrl).openStream();
+				 OutputStream out = new FileOutputStream(outputXml)) {
+
+				final byte[] buffer = new byte[8192];
+				int size = in.read(buffer);
+				while (size > 0) {
+					out.write(buffer, 0, size);
+					size = in.read(buffer);
+				}
+				out.flush();
+
+				logService.info("Written file: "+outputXml);
 			}
-			out.flush();
-
-			logService.info("Written file: "+outputXml);
-		}
-		catch (IOException e) {
-			logService.error("Some connection problem while fetching XML: "+e.getMessage());
-			logService.error("It is likely that UUID is wrong, or no such version exists for the particular dataset.");
-			e.printStackTrace();
+			catch (Exception e) {
+				logService.error("Some connection problem while fetching XML: "+e.getMessage());
+				logService.error("It is likely that UUID is wrong, or no such version exists for the particular dataset.");
+				e.printStackTrace();
+			}
 		}
 	}
 }

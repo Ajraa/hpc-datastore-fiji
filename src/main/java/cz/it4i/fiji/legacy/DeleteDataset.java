@@ -7,6 +7,9 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
+import client.base.GraphQLException;
 import org.scijava.command.Command;
 import org.scijava.command.CommandService;
 import org.scijava.log.LogLevel;
@@ -35,6 +38,9 @@ public class DeleteDataset implements Command {
 	@Parameter(label = "Are you sure?", persist = false)
 	public boolean areYouSure = false;
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public CommandService cs;
 
@@ -54,15 +60,23 @@ public class DeleteDataset implements Command {
 		try {
 			if (range.startsWith("whole")) {
 				myLogger.info("Deleting dataset "+datasetID+" at "+url);
-				final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/delete").openConnection();
-				connection.getInputStream(); //the communication happens only after this command
-				myLogger.info("Server responded: "+connection.getResponseMessage());
+				if (useGraphql) {
+					GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+					new RegisterService(client).deleteDataset(datasetID);
+				} else {
+					final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+url+"/datasets/"+datasetID+"/delete").openConnection();
+					connection.getInputStream(); //the communication happens only after this command
+					myLogger.info("Server responded: "+connection.getResponseMessage());
+				}
 			} else {
 				cs.run(GuiSelectVersion.class,true,
-						"url",url, "datasetID",datasetID);
+						"url",url, "datasetID",datasetID, "useGraphql", useGraphql);
 			}
 		} catch (IOException e) {
 			myLogger.error("Some connection problem:");
+			e.printStackTrace();
+		} catch (GraphQLException e) {
+			myLogger.error(e.toString());
 			e.printStackTrace();
 		}
 	}

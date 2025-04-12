@@ -7,9 +7,13 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
+import client.base.GraphQLException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import cz.it4i.fiji.rest.util.DatasetInfo;
 import ij.plugin.frame.Recorder;
+import models.QLDatasetDTO;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.log.LogLevel;
@@ -24,6 +28,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.UUID;
 
 @Plugin(type = Command.class, headless = true, menuPath = "Plugins>HPC DataStore>Create>Create new dataset from JSON")
 public class CreateNewDatasetFromJSON implements Command {
@@ -45,21 +50,38 @@ public class CreateNewDatasetFromJSON implements Command {
 	@Parameter(type = ItemIO.OUTPUT, label="Label of the created dataset:")
 	public String newDatasetLabel;
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Override
 	public void run() {
 		//logging facility
 		myLogger = mainLogger.subLogger("HPC CreateDataset", LogLevel.INFO);
 
 		try {
-			final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+this.url+"/datasets").openConnection();
-			connection.setRequestMethod("POST");
-			connection.setRequestProperty("Content-Type","application/json");
-			connection.setDoOutput(true);
-			connection.connect();
-			connection.getOutputStream().write(json.getBytes());
+			if (useGraphql) {
+				ObjectMapper mapper = new ObjectMapper();
+				DatasetInfo result = mapper.readValue(json, DatasetInfo.class);
+				QLDatasetDTO dto = result.convertToQL();
 
-			newDatasetUUID = new BufferedReader(new InputStreamReader(connection.getInputStream())).readLine();
-			newDatasetLabel = new ObjectMapper().readValue(json, DatasetInfo.class).getLabel();
+				newDatasetLabel = result.label;
+
+				GraphQLClient client = GraphQLClient.getInstance(url + "/graphql");
+				UUID uuid = new RegisterService(client).createEmptyDataset(dto);
+
+				newDatasetUUID = uuid.toString();
+			} else {
+				final HttpURLConnection connection = (HttpURLConnection)new URL("http://"+this.url+"/datasets").openConnection();
+				connection.setRequestMethod("POST");
+				connection.setRequestProperty("Content-Type","application/json");
+				connection.setDoOutput(true);
+				connection.connect();
+				connection.getOutputStream().write(json.getBytes());
+
+				newDatasetUUID = new BufferedReader(new InputStreamReader(connection.getInputStream())).readLine();
+				newDatasetLabel = new ObjectMapper().readValue(json, DatasetInfo.class).getLabel();
+			}
+
 
 			if (showRunCmd) {
 				final String howToRun = "run(\"Create new dataset from JSON\", 'url="+this.url
@@ -73,6 +95,9 @@ public class CreateNewDatasetFromJSON implements Command {
 			myLogger.error(e.getMessage());
 		} catch (IOException e) {
 			myLogger.error("Some connection problem:");
+			e.printStackTrace();
+		} catch (GraphQLException e) {
+			myLogger.error(e.toString());
 			e.printStackTrace();
 		}
 	}

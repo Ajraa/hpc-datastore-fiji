@@ -23,6 +23,9 @@ public class BdvOpenViewerViaLegacyBds implements Command {
 	@Parameter(label = "UUID of the dataset to be modified:", persistKey = "datasetdatasetid")
 	public String datasetID = "someDatasetUUID";
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public LogService logService;
 
@@ -33,7 +36,7 @@ public class BdvOpenViewerViaLegacyBds implements Command {
 
 		try
 		{
-			new GuiBdvBrowseDialog().startBrowser(serverUrl);
+			new GuiBdvBrowseDialog().startBrowser(url, serverUrl, datasetID, useGraphql);
 		}
 		catch ( final IOException e )
 		{

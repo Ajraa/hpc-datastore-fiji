@@ -89,6 +89,9 @@ public class CreateNewDataset implements Command {
 	@Parameter(label = "Compression of the stored data:", choices = { "none", "gzip" })
 	public String compression = "gzip";
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public CommandService cs;
 
@@ -169,7 +172,7 @@ public class CreateNewDataset implements Command {
 			myLogger.info("CREATED JSON:\n"+json);
 
 			final Future<CommandModule> subcall = cs.run(CreateNewDatasetFromJSON.class, true,
-					"url",url, "json",json, "showRunCmd",showRunCmd);
+					"url",url, "json",json, "showRunCmd",showRunCmd, "useGraphql", useGraphql);
 			newDatasetUUID = (String)subcall.get().getOutput("newDatasetUUID");
 			newDatasetLabel = di.getLabel();
 		} catch (ExecutionException e) {

@@ -7,6 +7,8 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.RegisterService;
+import client.base.GraphQLClient;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
 import org.scijava.command.CommandInfo;
@@ -47,6 +49,9 @@ public class CloneEmptyDatasetFromAnother implements Command {
 	@Parameter(label = "Modify params before creating the new dataset:")
 	public boolean shallUpdateParams = false;
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public PrefService prefs;
 
@@ -75,17 +80,22 @@ public class CloneEmptyDatasetFromAnother implements Command {
 		try {
 			//retrieve reference data
 			myLogger.info("Reading "+src_uuid+" from "+src_url);
-			DatasetInfo di = DatasetInfo.createFrom(src_url, src_uuid);
+			DatasetInfo di = DatasetInfo.createFrom(src_url, src_uuid, useGraphql);
 			myLogger.info(di.toString());
 
 			if (!shallUpdateParams) {
-				final String json = new ObjectMapper().writeValueAsString(di);
-				myLogger.info("CREATED JSON:\n"+json);
+				if (useGraphql) {
+					GraphQLClient client = GraphQLClient.getInstance(tgt_url + "/graphql");
+					new RegisterService(client).createEmptyDataset(di.convertToQL());
+				} else {
+					final String json = new ObjectMapper().writeValueAsString(di);
+					myLogger.info("CREATED JSON:\n"+json);
 
-				final Future<CommandModule> subcall = cs.run(CreateNewDatasetFromJSON.class, true,
-						"url",tgt_url, "json",json, "showRunCmd",showRunCmd);
-				newDatasetUUID = (String)subcall.get().getOutput("newDatasetUUID");
-				newDatasetLabel = (String)subcall.get().getOutput("newDatasetLabel");
+					final Future<CommandModule> subcall = cs.run(CreateNewDatasetFromJSON.class, true,
+							"url",tgt_url, "json",json, "showRunCmd",showRunCmd);
+					newDatasetUUID = (String)subcall.get().getOutput("newDatasetUUID");
+					newDatasetLabel = (String)subcall.get().getOutput("newDatasetLabel");
+				}
 			} else {
 				//we gonna preset the prefs store so that the "params of resolution level" dialog(s)
 				//will get preloaded with the reference values
@@ -132,6 +142,8 @@ public class CloneEmptyDatasetFromAnother implements Command {
 				cm.setInput("numberOfAllResLevels", di.resolutionLevels.size());
 				cm.setInput("compression", di.compression);
 				cm.setInput("showRunCmd", showRunCmd);
+				cm.setInput("useGraphql", useGraphql);
+
 
 				// 1) this is a standard list of pre- and post-processors,
 				//    this is how ModuleService.java creates them for every call of run()
@@ -172,6 +184,10 @@ public class CloneEmptyDatasetFromAnother implements Command {
 		} catch (InterruptedException e) {
 			//dialog interrupted, do nothing special...
 			myLogger.error("eee!? "+e.getMessage());
+		}
+		catch (Exception e) {
+			myLogger.error(e.toString());
+			e.printStackTrace();
 		}
 	}
 }

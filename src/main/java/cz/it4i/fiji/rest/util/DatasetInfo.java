@@ -14,7 +14,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.stream.Collectors;
+
+import client.RegisterService;
+import client.base.GraphQLClient;
+import client.base.GraphQLException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import models.QLDatasetDTO;
+import models.QLResolution;
+import models.QLResolutionLevel;
 
 public class DatasetInfo {
 	public String uuid;
@@ -53,6 +60,8 @@ public class DatasetInfo {
 	public List<Integer> timepointIds;
 
 	public String datasetType;
+
+	public DatasetInfo() {}
 
 	@Override
 	public String toString() {
@@ -161,5 +170,94 @@ public class DatasetInfo {
 		for (ResolutionLevel l : di.resolutionLevels)
 			l.setDimensions(di.dimensions);
 		return di;
+	}
+
+	public static DatasetInfo createFrom(final String hostnameURL, final String datasetID, boolean useGraphql)
+            throws IOException, GraphQLException {
+		if (!useGraphql) return createFrom(hostnameURL, datasetID);
+
+		GraphQLClient client = GraphQLClient.getInstance(hostnameURL + "/graphql");
+		QLDatasetDTO dto = new RegisterService(client).queryDataset(datasetID);
+		return new DatasetInfo(dto);
+	}
+
+	public QLDatasetDTO convertToQL() {
+		QLDatasetDTO dto = new QLDatasetDTO();
+
+		dto.setUuid(this.uuid);
+		dto.setVoxelType(this.voxelType);
+
+		List<Long> longDimensions = this.dimensions.stream()
+				.mapToLong(Integer::longValue)
+				.boxed()
+				.collect(Collectors.toList());
+		dto.setDimensions(longDimensions);
+
+		dto.setTimepoints(this.timepoints);
+		dto.setChannels(this.channels);
+		dto.setAngles(this.angles);
+		dto.setVoxelUnit(this.voxelUnit);
+
+		List<Float> floatResolution = this.voxelResolution.stream()
+				.map(Double::floatValue)
+				.collect(Collectors.toList());
+		dto.setVoxelResolution(floatResolution);
+
+		dto.setTimepointResolution(new QLResolution(this.timepointResolution.unit, (float) this.timepointResolution.value));
+		dto.setChannelResolution(new QLResolution(this.channelResolution.unit, (float) this.channelResolution.value));
+		dto.setAngleResolution(new QLResolution(this.angleResolution.unit, (float) this.angleResolution.value));
+		dto.setCompression(this.compression);
+
+		List<QLResolutionLevel> resolutionLevels = new ArrayList<>();
+		for (ResolutionLevel l : this.resolutionLevels)
+			resolutionLevels.add(new QLResolutionLevel(l.resolutions, l.blockDimensions));
+		dto.setResolutionLevels(resolutionLevels);
+
+		dto.setVersions(this.versions);
+		dto.setLabel(this.label);
+
+		return dto;
+	}
+	public DatasetInfo(QLDatasetDTO dataset) {
+		this.uuid = dataset.getUuid();
+		this.voxelType = dataset.getVoxelType();
+
+        this.dimensions = dataset.getDimensions().stream()
+                .map(Long::intValue)
+                .collect(Collectors.toList());
+
+		this.timepoints = dataset.getTimepoints();
+		this.channels = dataset.getChannels();
+		this.angles = dataset.getAngles();
+		this.voxelUnit = dataset.getVoxelUnit();
+
+		this.voxelResolution = dataset.getVoxelResolution().stream()
+				.map(Float::doubleValue)
+				.collect(Collectors.toList());
+
+		this.timepointResolution = new ResolutionWithOwnUnit();
+		this.timepointResolution.unit = dataset.getTimepointResolution().getUnit();
+		this.timepointResolution.value = dataset.getTimepointResolution().getValue();
+
+		this.channelResolution = new ResolutionWithOwnUnit();
+		this.channelResolution.unit = dataset.getChannelResolution().getUnit();
+		this.channelResolution.value = dataset.getChannelResolution().getValue();
+
+		this.angleResolution = new ResolutionWithOwnUnit();
+		this.angleResolution.unit = dataset.getAngleResolution().getUnit();
+		this.angleResolution.value = dataset.getAngleResolution().getValue();
+
+		this.compression = dataset.getCompression();
+
+		this.resolutionLevels = new ArrayList<>();
+		for (QLResolutionLevel l : dataset.getResolutionLevels()) {
+			ResolutionLevel rl = new ResolutionLevel();
+			rl.resolutions = l.getResolutions();
+			rl.blockDimensions = l.getBlockDimensions();
+			resolutionLevels.add(rl);
+		}
+
+		this.versions = dataset.getVersions();
+		this.label = dataset.getLabel();
 	}
 }
