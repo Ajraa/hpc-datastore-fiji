@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import client.RegisterService;
 import client.base.GraphQLClient;
 import client.base.GraphQLException;
+import client.builders.DatasetBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import models.QLDatasetDTO;
 import models.QLResolution;
@@ -178,6 +179,15 @@ public class DatasetInfo {
 
 		GraphQLClient client = GraphQLClient.getInstance(hostnameURL + "/graphql");
 		QLDatasetDTO dto = new RegisterService(client).queryDataset(datasetID);
+		return new DatasetInfo(dto);
+	}
+
+	public static DatasetInfo createFrom(final String hostnameURL, final String datasetID, boolean useGraphql, DatasetBuilder b)
+			throws IOException, GraphQLException {
+		if (!useGraphql) return createFrom(hostnameURL, datasetID);
+
+		GraphQLClient client = GraphQLClient.getInstance(hostnameURL + "/graphql");
+		QLDatasetDTO dto = new RegisterService(client).queryDataset(datasetID, b);
 		return new DatasetInfo(dto);
 	}
 

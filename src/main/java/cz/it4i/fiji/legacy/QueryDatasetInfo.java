@@ -7,6 +7,7 @@
  ******************************************************************************/
 package cz.it4i.fiji.legacy;
 
+import client.base.GraphQLException;
 import cz.it4i.fiji.rest.util.DatasetInfo;
 import org.scijava.ItemIO;
 import org.scijava.command.Command;
@@ -25,6 +26,9 @@ public class QueryDatasetInfo implements Command {
 	@Parameter(label = "UUID of the dataset to be queried:", persistKey = "datasetdatasetid")
 	public String datasetID = "someDatasetUUID";
 
+	@Parameter(label = "UseGraphQL:", persistKey = "usegraphql")
+	public boolean useGraphql = false;
+
 	@Parameter
 	public LogService mainLogger;
 	protected Logger myLogger;
@@ -36,11 +40,14 @@ public class QueryDatasetInfo implements Command {
 
 		try {
 			myLogger.info("Quering "+datasetID+" from "+url);
-			DatasetInfo di = DatasetInfo.createFrom(url, datasetID);
+			DatasetInfo di = DatasetInfo.createFrom(url, datasetID, useGraphql);
 			datasetInfo = di.toString();
 		} catch (IOException e) {
 			myLogger.error("Some connection problem:");
 			e.printStackTrace();
+		} catch (GraphQLException e) {
+			myLogger.error(e.toString());
+			throw new RuntimeException(e);
 		}
 	}
 
